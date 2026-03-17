@@ -57,12 +57,34 @@ func encodeULEB128(value uint32) []byte {
 	return result
 }
 
+func decodeULEB128(data []byte) uint32 {
+	var result uint32
+	var shift uint
+	for _, b := range data {
+		result |= uint32(b&0x7F) << shift
+		if b&0x80 == 0 {
+			break
+		}
+		shift += 7
+	}
+	return result
+}
+
 func newDAVECipher(key []byte) (cipher.AEAD, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
 	}
 	return cipher.NewGCM(block)
+}
+
+// newDAVECipherTruncated creates a DAVE cipher with truncated 8-byte tags for decryption.
+func newDAVECipherTruncated(key []byte) (cipher.AEAD, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	return cipher.NewGCMWithTagSize(block, daveTagSize)
 }
 
 func hashRatchetGetKey(baseSecret []byte, generation uint32) ([]byte, error) {

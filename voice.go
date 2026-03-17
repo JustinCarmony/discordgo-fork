@@ -95,6 +95,9 @@ type VoiceConnection struct {
 
 	pendingReWelcome bool
 
+	// ssrcUsers maps SSRC to user ID, populated from op5 Speaking events.
+	ssrcUsers map[uint32]string
+
 	voiceSpeakingUpdateHandlers []VoiceSpeakingUpdateHandler
 
 	seqAck int // for heartbeat and resume
@@ -656,14 +659,21 @@ func (v *VoiceConnection) onEvent(ctx context.Context, binary bool, message []by
 			return
 
 		case 5:
-			if len(v.voiceSpeakingUpdateHandlers) == 0 {
-				return
-			}
-
 			voiceSpeakingUpdate := &VoiceSpeakingUpdate{}
 			if err := json.Unmarshal(e.RawData, voiceSpeakingUpdate); err != nil {
 				v.log(LogError, "OP5 unmarshall error, %s, %s", err, string(e.RawData))
 				return
+			}
+
+			// Track SSRC → UserID for DAVE decryption.
+			if voiceSpeakingUpdate.SSRC > 0 && voiceSpeakingUpdate.UserID != "" {
+				v.Cond.L.Lock()
+				if v.ssrcUsers == nil {
+					v.ssrcUsers = make(map[uint32]string)
+				}
+				v.ssrcUsers[uint32(voiceSpeakingUpdate.SSRC)] = voiceSpeakingUpdate.UserID
+				v.Cond.L.Unlock()
+				v.log(LogInformational, "SSRC %d mapped to user %s", voiceSpeakingUpdate.SSRC, voiceSpeakingUpdate.UserID)
 			}
 
 			for _, h := range v.voiceSpeakingUpdateHandlers {
@@ -1095,6 +1105,24 @@ func (v *VoiceConnection) opusReceiver(ctx context.Context) {
 			extensionLength := binary.BigEndian.Uint16(recvbuf[extensionBegin+2 : extensionBegin+4])
 			p.Extension = recvbuf[extensionBegin : extensionBegin+4+int(extensionLength)*4]
 			p.Opus = p.Opus[int(extensionLength)*4:]
+		}
+
+		// DAVE E2EE decryption: if DAVE is active, decrypt the opus payload.
+		v.Cond.L.Lock()
+		dave := v.dave
+		var senderUserID string
+		if v.ssrcUsers != nil {
+			senderUserID = v.ssrcUsers[p.SSRC]
+		}
+		v.Cond.L.Unlock()
+
+		if dave != nil && dave.IsActive() && senderUserID != "" && len(p.Opus) > 4 {
+			decrypted, err := dave.DecryptFrame(senderUserID, p.Opus)
+			if err != nil {
+				v.log(LogDebug, "DAVE decrypt failed for SSRC %d (user %s): %v", p.SSRC, senderUserID, err)
+			} else {
+				p.Opus = decrypted
+			}
 		}
 
 		if ch != nil {
