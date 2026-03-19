@@ -705,19 +705,22 @@ func (v *VoiceConnection) onEvent(ctx context.Context, binary bool, message []by
 			return
 
 		case 21: // DAVE prepare_transition
+			v.log(LogInformational, "received op 21 (prepare_transition)")
 			v.handleDAVEPrepareTransition(e.RawData)
 			return
 
 		case 22: // DAVE execute_transition
+			v.log(LogInformational, "received op 22 (execute_transition)")
 			v.handleDAVEExecuteTransition(e.RawData)
 			return
 
 		case 24: // DAVE prepare_epoch
+			v.log(LogInformational, "received op 24 (prepare_epoch)")
 			v.handleDAVEPrepareEpoch(ctx, e.RawData)
 			return
 
 		default:
-			v.log(LogDebug, "unknown voice operation, %d, %s", e.Operation, string(e.RawData))
+			v.log(LogInformational, "unknown voice operation, %d, %s", e.Operation, string(e.RawData))
 		}
 	}
 
@@ -1161,7 +1164,7 @@ func (v *VoiceConnection) handleDAVEBinary(message []byte) {
 
 	opcode := message[2]
 	payload := message[3:]
-	v.log(LogDebug, "DAVE binary opcode=%d len=%d", opcode, len(payload))
+	v.log(LogInformational, "DAVE binary opcode=%d len=%d", opcode, len(payload))
 
 	switch opcode {
 	case 25:
@@ -1238,7 +1241,7 @@ func (v *VoiceConnection) handleDAVEBinary(message []byte) {
 		v.sendDAVEReadyForTransition(transitionID)
 
 	default:
-		v.log(LogDebug, "DAVE unknown binary opcode %d (%d bytes)", opcode, len(payload))
+		v.log(LogInformational, "DAVE unknown binary opcode %d (%d bytes)", opcode, len(payload))
 	}
 }
 
@@ -1353,7 +1356,7 @@ func (v *VoiceConnection) sendDAVEKeyPackageBinary(kpData []byte) {
 }
 
 func (v *VoiceConnection) sendDAVEReadyForTransition(transitionID uint16) {
-	v.log(LogDebug, "DAVE sending ready_for_transition id=%d", transitionID)
+	v.log(LogInformational, "DAVE sending ready_for_transition id=%d", transitionID)
 
 	type readyData struct {
 		TransitionID uint16 `json:"transition_id"`
