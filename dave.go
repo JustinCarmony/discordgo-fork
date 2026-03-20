@@ -246,20 +246,24 @@ func (d *DAVESession) EncryptFrame(opusData []byte) ([]byte, error) {
 
 // DecryptFrame decrypts a DAVE-encrypted frame from another participant.
 // senderUserID is the user who sent this frame (looked up from SSRC mapping).
-func (d *DAVESession) DecryptFrame(senderUserID string, data []byte) ([]byte, error) {
+func (d *DAVESession) DecryptFrame(senderUserID string, data []byte) (plaintext []byte, retErr error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+
+	// Recover from panics so a malformed frame never crashes the gateway.
+	defer func() {
+		if r := recover(); r != nil {
+			plaintext = nil
+			retErr = fmt.Errorf("DAVE decrypt panic: %v", r)
+		}
+	}()
 
 	if d.exporterSecret == nil {
 		return nil, fmt.Errorf("no exporter secret")
 	}
 
 	// Parse the secure frame to extract ciphertext, tag, and nonce.
-	plaintext, err := d.decryptSecureFrameLocked(senderUserID, data)
-	if err != nil {
-		return nil, err
-	}
-	return plaintext, nil
+	return d.decryptSecureFrameLocked(senderUserID, data)
 }
 
 // decryptSecureFrameLocked parses and decrypts a DAVE secure frame. Must hold d.mu.
@@ -339,7 +343,7 @@ func (d *DAVESession) getReceiverStateLocked(senderUserID string, generation uin
 	}
 
 	rs, ok := d.receivers[senderUserID]
-	if ok && rs.currentGeneration == generation {
+	if ok && rs.currentGeneration == generation && rs.cipher != nil {
 		return rs, nil
 	}
 
@@ -359,7 +363,6 @@ func (d *DAVESession) getReceiverStateLocked(senderUserID string, generation uin
 		}
 
 		rs = &receiverState{baseSecret: baseSecret}
-		d.receivers[senderUserID] = rs
 	}
 
 	// Derive key for the requested generation.
@@ -375,6 +378,8 @@ func (d *DAVESession) getReceiverStateLocked(senderUserID string, generation uin
 
 	rs.currentGeneration = generation
 	rs.cipher = frameCipher
+	// Store in map only after cipher is successfully created. // DC-057
+	d.receivers[senderUserID] = rs
 	return rs, nil
 }
 
