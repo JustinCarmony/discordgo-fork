@@ -79,12 +79,10 @@ func newDAVECipher(key []byte) (cipher.AEAD, error) {
 }
 
 // newDAVECipherTruncated creates a DAVE cipher with truncated 8-byte tags for decryption.
+// Go's standard cipher.NewGCMWithTagSize requires tags >= 12 bytes, but DAVE uses 8-byte
+// truncated tags. We use our custom truncatedGCM implementation instead.
 func newDAVECipherTruncated(key []byte) (cipher.AEAD, error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	return cipher.NewGCMWithTagSize(block, daveTagSize)
+	return newTruncatedGCM(key, daveTagSize)
 }
 
 func hashRatchetGetKey(baseSecret []byte, generation uint32) ([]byte, error) {
