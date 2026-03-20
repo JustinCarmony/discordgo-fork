@@ -1119,22 +1119,25 @@ func (v *VoiceConnection) opusReceiver(ctx context.Context) {
 		}
 		v.Cond.L.Unlock()
 
-		if dave != nil && dave.IsActive() && senderUserID != "" && len(p.Opus) > 4 {
+		if dave != nil && dave.CanDecrypt() && senderUserID != "" && len(p.Opus) > 4 {
 			decrypted, err := dave.DecryptFrame(senderUserID, p.Opus)
 			if err != nil {
-				v.log(LogInformational, "DAVE decrypt failed for SSRC %d (user %s): %v (data len=%d)", p.SSRC, senderUserID, err, len(p.Opus))
+				if p.Sequence%200 == 0 {
+					v.log(LogInformational, "DAVE decrypt failed for SSRC %d (user %s): %v (data len=%d)", p.SSRC, senderUserID, err, len(p.Opus))
+				}
 			} else {
-				v.log(LogInformational, "DAVE decrypt OK for SSRC %d (user %s): %d -> %d bytes", p.SSRC, senderUserID, len(p.Opus), len(decrypted))
+				if p.Sequence%200 == 0 {
+					v.log(LogInformational, "DAVE decrypt OK for SSRC %d (user %s): %d -> %d bytes", p.SSRC, senderUserID, len(p.Opus), len(decrypted))
+				}
 				p.Opus = decrypted
 			}
 		} else if dave == nil {
-			// First few packets only — log that DAVE is nil
 			if p.Sequence%500 == 0 {
 				v.log(LogInformational, "DAVE is nil, passing through raw opus (seq=%d)", p.Sequence)
 			}
-		} else if !dave.IsActive() {
+		} else if !dave.CanDecrypt() {
 			if p.Sequence%500 == 0 {
-				v.log(LogInformational, "DAVE not active, passing through raw opus (seq=%d)", p.Sequence)
+				v.log(LogInformational, "DAVE no exporter secret yet, passing through raw (seq=%d)", p.Sequence)
 			}
 		} else if senderUserID == "" {
 			if p.Sequence%500 == 0 {

@@ -397,6 +397,15 @@ func (d *DAVESession) CanEncrypt() bool {
 	return d.frameCipher != nil
 }
 
+// CanDecrypt returns true if the session has an exporter secret and can
+// derive receiver keys for decryption. This is available after Welcome,
+// even before execute_transition sets active=true.
+func (d *DAVESession) CanDecrypt() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.exporterSecret != nil
+}
+
 func (d *DAVESession) Reset() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
